@@ -1,0 +1,9 @@
+# Colab already ships a CUDA build of torch, so it is deliberately not pinned here.
+# 4.56 is where from_pretrained started taking dtype= instead of torch_dtype=
+transformers>=4.56,<6
+peft>=0.13
+bitsandbytes>=0.44
+accelerate>=0.34
+datasets>=2.19
+wandb>=0.17
+matplotlib>=3.7
