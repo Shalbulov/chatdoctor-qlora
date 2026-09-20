@@ -46,6 +46,10 @@ def parse_args():
     ap.add_argument("--lora-dropout", type=float, default=0.05)
     ap.add_argument("--save-steps", type=int, default=50)
     ap.add_argument("--eval-steps", type=int, default=25)
+    ap.add_argument("--load-best", action="store_true",
+                    help="keep the checkpoint with the lowest validation loss instead "
+                         "of the last one. The first run on this data overfitted after "
+                         "roughly 0.8 epochs, so the last step is not the one to ship.")
     ap.add_argument("--limit-train", type=int, default=None,
                     help="cut the training set down, for a smoke run")
     ap.add_argument("--limit-val", type=int, default=None,
@@ -102,10 +106,20 @@ def main():
     print(f"train {len(train_ds)} rows, val {len(val_ds)} rows")
 
     # warmup in steps, not as a ratio: transformers 5 dropped warmup_ratio, and the
-    # number is easier to sanity-check against the step count printed by the Trainer
-    steps_per_epoch = math.ceil(len(train_ds) / (args.batch_size * args.grad_accum))
+    # number is easier to sanity-check against the step count printed by the Trainer.
+    # The per-device batch is multiplied by every visible card, and Kaggle hands out
+    # two, so the device count has to be in here or the step estimate is off by 2x.
+    n_gpu = max(1, torch.cuda.device_count())
+    steps_per_epoch = math.ceil(
+        len(train_ds) / (args.batch_size * n_gpu * args.grad_accum))
     total_steps = max(1, int(steps_per_epoch * args.epochs))
     warmup_steps = max(1, round(0.03 * total_steps))
+
+    if args.load_best:
+        # the Trainer refuses to restore a best checkpoint it never wrote
+        args.save_steps = args.eval_steps
+    print(f"{n_gpu} gpu, effective batch {args.batch_size * n_gpu * args.grad_accum}, "
+          f"{total_steps} steps, {warmup_steps} warmup")
 
     cuda = torch.cuda.is_available()
     if not cuda:
@@ -153,6 +167,9 @@ def main():
         save_strategy="steps",
         save_steps=args.save_steps,
         save_total_limit=2,
+        load_best_model_at_end=args.load_best,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         report_to=report_to,
         run_name=args.run_name,
         seed=SEED,
@@ -169,6 +186,11 @@ def main():
     trainer.train()
 
     args.out.mkdir(parents=True, exist_ok=True)
+    # fp16 halves the adapter to about 80 MB, which keeps it under the GitHub file
+    # limit. The weights are only ever used for inference, where fp32 buys nothing.
+    for param in model.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(torch.float16)
     model.save_pretrained(args.out)
     tok.save_pretrained(args.out)
 
