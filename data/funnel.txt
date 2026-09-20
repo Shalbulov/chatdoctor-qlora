@@ -1,0 +1,13 @@
+stage                                   kept   dropped
+------------------------------------------------------
+loaded                                112165          
+exact duplicate question              111964       201
+'Chat Doctor' left mid-answer          75716     36248
+corrupted opening word                 71972      3744
+'.*' corruption marker                 71543       429
+markdown or enumerated list            67178      4365
+answer starts mid-word                 57282      9896
+answer cut off mid-sentence            35996     21286
+length outside bounds                  34566      1430
+sampled candidate pool (seed 42)        6000     28566
+near-duplicate question (cos>=0.85)     6000          
